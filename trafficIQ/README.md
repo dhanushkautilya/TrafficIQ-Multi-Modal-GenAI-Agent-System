@@ -145,8 +145,6 @@ curl -X POST http://localhost:8000/agent/run \
 
 ## 📖 Common Tasks
 
-## 📖 Common Tasks
-
 ### Run Tests
 
 ```bash
@@ -202,54 +200,6 @@ GCP_PROJECT=my-project
 VERTEX_ENDPOINT_ID=projects/xxx/locations/xxx/endpoints/xxx
 ```
 
-## Configuration
-
-### Environment Variables
-
-```bash
-# Application
-ENVIRONMENT=development              # development | production
-LOG_LEVEL=info                        # debug, info, warning, error
-JSON_LOGGING=true                     # JSON structured logs
-API_TITLE=TrafficIQ
-API_VERSION=0.1.0
-
-# Vertex AI / GCP
-USE_VERTEX=false                      # false = mock, true = real
-GCP_PROJECT=my-gcp-project
-GCP_REGION=us-central1
-VERTEX_ENDPOINT_ID=projects/.../endpoints/...
-VERTEX_MODEL_NAME=gemma-3n-tuned-vehicles
-
-# Storage
-ARTIFACTS_PATH=./artifacts
-USE_GCS=false                         # false = local, true = GCS
-GCS_BUCKET=my-trafficiq-bucket
-
-# External Services
-BOLO_SERVICE_URL=http://localhost:8001
-CASE_SERVICE_URL=http://localhost:8002
-DEBUG=false
-```
-
-### Policy Configuration
-
-Adjustable thresholds in `app/agent/policy.py`:
-
-```python
-PolicyConfig(
-    MIN_VEHICLE_CONFIDENCE_FOR_SKIP_OCR=0.70,  # Confidence needed to skip OCR
-    MIN_PLATE_CONFIDENCE_FOR_BOLO=0.60,        # Minimum plate confidence
-    NIGHT_QUALITY_PENALTY=0.15,                # Confidence reduction for night
-    BLUR_QUALITY_PENALTY=0.20,                 # Confidence reduction for blur
-)
-```
-
-Priority Rules:
-- **P0**: BOLO match + vehicle confidence ≥ 0.70
-- **P1**: BOLO match + vehicle confidence < 0.70
-- **P2**: No BOLO match
-
 ## Project Structure
 
 ```
@@ -294,327 +244,375 @@ trafficIQ/
 └── README.md                   # This file
 ```
 
-## Switching to Real Vertex AI
+## 🎯 Decision Logic & Priorities
 
-To use actual Vertex AI predictions instead of mocks:
+### How Priority is Assigned
 
-### 1. Setup GCP Project
+The system uses a simple, transparent ruleset:
 
-```bash
-# Create project and enable APIs
-gcloud projects create trafficiq-prod
-gcloud config set project trafficiq-prod
-gcloud services enable aiplatform.googleapis.com storage-api.googleapis.com
-```
+| Condition | Result | Meaning |
+|-----------|--------|---------|
+| **BOLO Match** + Confidence ≥ 70% | **P0** | High-priority alert - known suspect, high confidence |
+| **BOLO Match** + Confidence < 70% | **P1** | Medium-priority alert - known suspect, lower confidence |
+| **No BOLO Match** | **P2** | Routine case - no watchlist match |
 
-### 2. Create Vertex AI Endpoint
+### When OCR is Automatically Used
 
-```bash
-# Deploy your Gemma 3n fine-tuned model
-# (Assuming you have a trained model checkpoint)
-gcloud ai models create \
-  --region=us-central1 \
-  --display-name=gemma-3n-vehicles \
-  --framework=pytorch
+The system checks the image and uses OCR (plate extraction) if:
+- 🌙 Image is at night
+- 🌫️ Image is blurry
+- 🌧️ Image is rainy
+- 📉 Vehicle confidence is below 70%
 
-# Create endpoint
-gcloud ai endpoints create \
-  --region=us-central1 \
-  --display-name=trafficiq-inference
-```
+Otherwise, it skips OCR to save time.
 
-### 3. Update Environment
+## 🌐 Using Real Vertex AI
 
-```bash
-# In .env or Cloud Run environment variables
-USE_VERTEX=true
-GCP_PROJECT=trafficiq-prod
-VERTEX_ENDPOINT_ID=projects/YOUR_PROJECT/locations/us-central1/endpoints/YOUR_ENDPOINT
-```
+### For Development (Optional)
 
-### 4. Install GCP Dependencies
+By default, TrafficIQ uses **mock predictions** (deterministic, works offline). To use real Vertex AI:
+
+#### 1. Install GCP Libraries
 
 ```bash
 pip install -e ".[gcp]"
 ```
 
-### 5. Authenticate
+#### 2. Setup GCP Account
 
 ```bash
-# For local development
+# Authenticate
 gcloud auth application-default login
 
-# For Cloud Run, ensure service account has roles:
-# - roles/aiplatform.user
-# - roles/storage.objectAdmin
+# Set project
+gcloud config set project YOUR_PROJECT_ID
 ```
 
-The agent will automatically call real Vertex endpoints instead of using mock predictions.
+#### 3. Update Environment
 
-## Evaluation
+```bash
+# Edit .env
+USE_VERTEX=true
+GCP_PROJECT=your-project-id
+VERTEX_ENDPOINT_ID=projects/YOUR_PROJECT/locations/us-central1/endpoints/YOUR_ENDPOINT_ID
+```
+
+#### 4. Restart API
+
+```bash
+uvicorn app.api.main:app --reload
+```
+
+The API will now use real Vertex AI predictions instead of mocks. **All code is the same!**
+
+---
+
+## 📊 Evaluation & Metrics
 
 ### Run Evaluation
 
 ```bash
 python -m eval.evaluate
-
-# Output: artifacts/eval_report.md
 ```
 
-### Sample Metrics
+This analyzes the sample dataset and generates a report.
 
-The evaluation module computes:
-
-- **Accuracy**: Overall prediction accuracy by vehicle make
-- **Per-Class Accuracy**: Broken down by make (Honda, Toyota, etc.)
-- **Confusion Matrix**: Top-5 makes
-- **ECE (Expected Calibration Error)**: Confidence calibration metric (lower is better)
-
-### Example Report
-
-```markdown
-# TrafficIQ Evaluation Report
-
-## Summary
-- Dataset Size: 10 samples
-- Successful Predictions: 10/10
-- Evaluation Date: 2024-01-15 14:30:00
-
-## Overall Metrics
-- **Accuracy**: 0.8000 (80.00%)
-- **ECE (Calibration)**: 0.0532
-- **Precision (macro)**: 0.0000
-- **Recall (macro)**: 0.0000
-- **F1-Score (macro)**: 0.0000
-
-## Per-Class Accuracy (Vehicle Makes)
-| Make        | Accuracy           |
-|-------------|-------------------|
-| Honda       | 1.0000 (100.00%)  |
-| Toyota      | 0.5000 (50.00%)   |
-| Ford        | 1.0000 (100.00%)  |
-```
-
-## Deployment
-
-### Docker Build
+### View Results
 
 ```bash
-docker build -f infra/Dockerfile.api -t trafficiq:latest .
-docker run -p 8000:8000 \
-  -e USE_VERTEX=false \
-  -e ENVIRONMENT=production \
-  trafficiq:latest
+cat artifacts/eval_report.md
 ```
 
-### Cloud Run Deployment
+**Output includes:**
+- Accuracy by vehicle make
+- Confusion matrix (top makes)
+- Calibration metric (ECE)
+- Sample predictions
+
+---
+
+## 📁 Project Structure
+
+```
+trafficIQ/
+├── app/
+│   ├── api/              # Flask-like FastAPI server
+│   ├── agent/            # Decision logic & orchestration
+│   ├── tools/            # Integrations (Vertex AI, OCR, BOLO, etc.)
+│   └── common/           # Shared utilities, schemas, logging
+├── eval/                 # Evaluation & metrics
+├── tests/                # Unit tests (pytest)
+├── infra/                # Docker, Cloud Run, Terraform
+├── pyproject.toml        # Dependencies & config
+├── .env.example          # Environment template
+└── README.md             # This file
+```
+
+---
+
+## 🚀 Deploy to Google Cloud
+
+### Option 1: Cloud Run (Easiest)
 
 ```bash
-# See detailed guide in infra/cloudrun_deploy.md
-
-# Quick deploy
+# Deploy from source
 gcloud run deploy trafficiq-api \
   --source . \
   --platform managed \
   --region us-central1 \
-  --memory 4Gi \
-  --cpu 2 \
   --allow-unauthenticated
 ```
 
-### Kubernetes (GKE)
+Your API is now live! 🎉
 
-Example manifest:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: trafficiq-api
-spec:
-  replicas: 3
-  template:
-    spec:
-      containers:
-      - name: api
-        image: gcr.io/PROJECT/trafficiq:latest
-        ports:
-        - containerPort: 8000
-        env:
-        - name: USE_VERTEX
-          value: "true"
-        resources:
-          limits:
-            cpu: 2
-            memory: 4Gi
-```
-
-## Testing
-
-### Unit Tests
+### Option 2: Docker
 
 ```bash
-# Run all tests
+# Build image
+docker build -f infra/Dockerfile.api -t trafficiq:latest .
+
+# Run container
+docker run -p 8000:8000 -e USE_VERTEX=false trafficiq:latest
+```
+
+### Option 3: Kubernetes
+
+See `infra/cloudrun_deploy.md` for detailed K8s manifests.
+
+---
+
+## 🧪 Testing
+
+### Run All Tests
+
+```bash
 pytest -v
+```
 
-# Run specific module
-pytest tests/test_api.py -v
+### Run Specific Test
 
-# With coverage report
+```bash
+pytest tests/test_api.py::test_health_check -v
+```
+
+### With Coverage
+
+```bash
 pytest --cov=app --cov=eval --cov-report=html
 ```
 
-### Integration Tests
+Opens `htmlcov/index.html` with detailed coverage report.
+
+---
+
+## 🔍 Troubleshooting
+
+To use actual Vertex AI predictions instead of mocks:
+
+
+
+## 🔍 Troubleshooting
+
+### ❌ "ModuleNotFoundError: No module named 'xyz'"
+
+**Fix:** Make sure you installed with `-e ".[dev]"`
 
 ```bash
-# Start API server in one terminal
-uvicorn app.api.main:app --reload
-
-# Run integration tests in another
-pytest tests/test_api.py::TestIntegration -v
+pip install -e ".[dev]"
 ```
 
-### Load Testing (Locust)
+### ❌ "Vertex AI connection failed"
 
-```bash
-# Install locust
-pip install locust
+This happens if `USE_VERTEX=true` but you didn't install GCP libraries.
 
-# Run load test
-locust -f tests/locustfile.py --host=http://localhost:8000
-```
-
-## Monitoring & Logging
-
-### Local Logging
-
-```bash
-# Set log level
-LOG_LEVEL=debug python -m uvicorn app.api.main:app
-
-# JSON structured logs (production)
-JSON_LOGGING=true uvicorn app.api.main:app
-```
-
-### Cloud Logging (Cloud Run)
-
-Logs automatically appear in Google Cloud Logging:
-
-```bash
-gcloud run logs read trafficiq-api --limit=50
-```
-
-### Key Metrics to Monitor
-
-```python
-# In logs, watch for:
-- vehicle_prediction_confidence < 0.60  # Low confidence predictions
-- ocr_fallback_used=true                # Frequent OCR fallbacks indicate image quality issues
-- processing_time > 500ms               # Slow responses
-- bolo_match=true                       # Watchlist matches
-- priority=P0                           # Critical matches
-```
-
-## Troubleshooting
-
-### Mock Predictions Are Not Deterministic
-
-**Issue**: Same image URI produces different predictions.
-
-**Solution**: Ensure `USE_VERTEX=false`. Mock mode uses MD5 hash of URI.
-
-```bash
-# Verify config
-curl http://localhost:8000/health
-```
-
-### Vertex AI Connection Fails
-
-**Issue**: `google-cloud-aiplatform` not installed.
-
-**Solution**:
+**Fix:**
 ```bash
 pip install -e ".[gcp]"
 gcloud auth application-default login
 ```
 
-### BOLO Lookups Always Match
-
-**Issue**: Too many false positives on watchlist.
-
-**Solution**: Adjust policy thresholds in `app/agent/policy.py`:
-
-```python
-PolicyConfig(
-    P0_THRESHOLDS={"bolo_match": True, "min_confidence": 0.85},  # Higher threshold
-    P1_THRESHOLDS={"bolo_match": True, "min_confidence": 0.70},
-)
+Or just use mock mode:
+```bash
+# In .env
+USE_VERTEX=false
 ```
 
-### High Memory Usage
+### ❌ "Port 8000 already in use"
 
-**Issue**: API server consuming too much RAM.
+Another process is using the port.
 
-**Solution**: 
-- Reduce batch size
-- Implement request caching
-- Scale horizontally on Cloud Run
+**Fix:** Use a different port
+```bash
+uvicorn app.api.main:app --port 8001
+```
+
+### ❌ "Mock predictions are not deterministic"
+
+**Check:** Same image URI should give same result. If not, something else is wrong.
 
 ```bash
-gcloud run update trafficiq-api --memory 8Gi --max-instances 100
+# Should return same prediction
+curl -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"image_uri": "gs://bucket/same_image.jpg"}'
+
+# Run twice, compare results
 ```
 
-## Contributing
+### ❌ "API returns 500 error"
 
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
+Check the logs:
 
-## Performance Benchmarks
+```bash
+# Enable debug logging
+LOG_LEVEL=debug uvicorn app.api.main:app --reload
 
-Running on Google Cloud Run (2 CPU, 4GB RAM):
+# Look for error messages
+```
 
-| Operation | Latency | Notes |
-|-----------|---------|-------|
-| Health Check | ~5ms | No computation |
-| Vehicle Prediction (mock) | ~20ms | Hash-based |
-| Vehicle Prediction (Vertex) | ~150-300ms | Network + model |
-| OCR Extraction | ~30ms | Pattern matching |
-| BOLO Lookup | ~15ms | Hardcoded match |
-| Full Agent Pipeline (mock) | ~200ms | All steps |
-| Full Agent Pipeline (Vertex) | ~400-600ms | End-to-end |
+### ❌ "BOLO lookups always match"
 
-## Next Steps & Roadmap
+Watchlist is too broad. Adjust thresholds in `app/agent/policy.py`:
 
-- [ ] Implement real Vertex AI fine-tuning pipeline
-- [ ] Add WebSocket endpoints for streaming analysis
-- [ ] Implement BOLO database abstraction (PostgreSQL, MongoDB)
-- [ ] Add multi-model blend (vehical + plate + pedestrian detectors)
-- [ ] Implement feedback loop for model retraining
-- [ ] Add real-time dashboard (Grafana/Streamlit)
-- [ ] Expand to other vehicle attributes (license plate, VIN detection)
-- [ ] Implement explainability (LIME/SHAP) for predictions
-- [ ] Add automated testing (CI/CD pipeline)
-- [ ] Create Terraform modules for reproducible infrastructure
-
-## License
-
-MIT License - See LICENSE file for details
-
-## Support
-
-For issues, questions, or contributions:
-
-- **GitHub Issues**: [Report bugs here](https://github.com/your-org/trafficiq/issues)
-- **Discussions**: [Ask questions here](https://github.com/your-org/trafficiq/discussions)
-- **Email**: dev@trafficiq.local
-
-## Authors
-
-- TrafficIQ Team
+```python
+P0_THRESHOLDS = {"bolo_match": True, "min_confidence": 0.85}  # Stricter
+P1_THRESHOLDS = {"bolo_match": True, "min_confidence": 0.70}
+```
 
 ---
 
-**Built with ❤️ for traffic law enforcement and public safety**
+## 📊 Performance
+
+Typical latencies on Google Cloud Run (2 CPU, 4GB RAM):
+
+| Operation | Time | Notes |
+|-----------|------|-------|
+| Health check | 5ms | No computation |
+| Vehicle prediction (mock) | 20ms | Hash-based |
+| Vehicle prediction (Vertex AI) | 150-300ms | Network + inference |
+| OCR extraction | 30ms | Pattern matching |
+| Full pipeline (mock) | 200ms | All steps combined |
+| Full pipeline (Vertex AI) | 400-600ms | End-to-end |
+
+---
+
+## 📚 Project Configuration
+
+### Environment Variables
+
+All settings are controlled by `.env` file. Copy the example:
+
+```bash
+cp .env.example .env
+```
+
+**Key Variables:**
+
+```env
+# Server
+ENVIRONMENT=development          # or "production"
+LOG_LEVEL=info                   # debug, info, warning, error
+API_TITLE=TrafficIQ
+API_VERSION=0.1.0
+
+# ML Model
+USE_VERTEX=false                 # false = mock, true = real Vertex AI
+GCP_PROJECT=my-gcp-project
+VERTEX_ENDPOINT_ID=projects/xxx/locations/xxx/endpoints/xxx
+
+# Storage
+ARTIFACTS_PATH=./artifacts      # Where to save evidence packets
+USE_GCS=false                    # false = local (./artifacts), true = Google Cloud Storage
+
+# External Services
+BOLO_SERVICE_URL=http://localhost:8001
+CASE_SERVICE_URL=http://localhost:8002
+```
+
+### Policy Thresholds
+
+Edit `app/agent/policy.py` to adjust decision logic:
+
+```python
+PolicyConfig(
+    # When to use OCR fallback
+    MIN_VEHICLE_CONFIDENCE_FOR_SKIP_OCR=0.70,
+    
+    # Priority assignment
+    P0_THRESHOLDS={"bolo_match": True, "min_confidence": 0.70},
+    P1_THRESHOLDS={"bolo_match": True, "min_confidence": 0.50},
+    P2_THRESHOLDS={"bolo_match": False},
+)
+```
+
+---
+
+## 🤝 Contributing
+
+Found a bug? Want to add a feature? Here's how:
+
+1. Fork the repo
+2. Create a feature branch: `git checkout -b feature/amazing-thing`
+3. Make your changes and add tests
+4. Run tests: `pytest -v`
+5. Commit: `git commit -m "Add amazing thing"`
+6. Push: `git push origin feature/amazing-thing`
+7. Open a Pull Request
+
+---
+
+## 🗺️ Roadmap
+
+**In Progress:**
+- [ ] Real Vertex AI fine-tuning pipeline
+- [ ] WebSocket streaming endpoints
+- [ ] Advanced BOLO database integration
+
+**Planned:**
+- [ ] Multi-model ensemble (vehicle + plate + pedestrian)
+- [ ] Real-time Grafana dashboard
+- [ ] Model explainability (LIME/SHAP)
+- [ ] Automated retraining pipeline
+- [ ] VIN detection
+- [ ] Terraform infrastructure modules
+
+---
+
+## 📄 License
+
+MIT License - See LICENSE file
+
+---
+
+## 💬 Get Help
+
+- 📖 **Docs:** Read `/dev /docs` endpoint (auto-generated)
+- 🐛 **Issues:** GitHub Issues
+- 💭 **Questions:** GitHub Discussions
+- 📧 **Email:** dev@trafficiq.local
+
+---
+
+## ⭐ About TrafficIQ
+
+**TrafficIQ** makes it easy for law enforcement to:
+- ✅ Analyze images in seconds (not manually)
+- ✅ Identify high-priority cases automatically
+- ✅ Build an audit trail for each investigation
+- ✅ Work offline or in the cloud
+
+**Built with:**
+- 🐍 Python 3.11
+- ⚡ FastAPI (modern API framework)
+- 🤖 Vertex AI (Google's ML platform)
+- 📦 Pydantic (type safety)
+- 🧪 Pytest (testing)
+- ☁️ Cloud Run (serverless deployment)
+
+**Made with ❤️ for public safety** 🚨
+
+```
+      🚗 🚙 🚕 🚌 🚎
+    TrafficIQ - AI for Traffic
+    Keep roads safer, faster
+```
