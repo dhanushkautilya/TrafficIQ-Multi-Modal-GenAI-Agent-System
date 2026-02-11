@@ -1,34 +1,73 @@
-# TrafficIQ: Multi-Modal Vehicle Identification Pipeline
+# 🚨 TrafficIQ: AI-Powered Vehicle Identification System
 
 ![Python 3.11](https://img.shields.io/badge/python-3.11-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)
 
-## Problem Statement
+## What is TrafficIQ?
 
-Modern law enforcement and traffic management agencies process thousands of traffic camera images daily but lack efficient, AI-powered systems for automated vehicle identification at scale. `TrafficIQ` addresses this by providing a production-ready, multi-modal AI pipeline that analyzes traffic camera images to identify vehicles, extract license plates, correlate against watchlists (BOLO), and automatically generate prioritized case records for human investigators. The system supports both real Vertex AI endpoints and deterministic mock predictions for local development, enabling seamless testing without GCP dependencies.
+**TrafficIQ** is an AI system that automatically analyzes traffic camera images to:
+- 🔍 Identify vehicles (make, model, year, color, body type)
+- 📸 Extract license plates via OCR
+- ⚠️ Check watchlists for suspected vehicles (BOLO)
+- 📋 Create priority-ranked cases for investigators
+
+Think of it as an intelligent traffic camera assistant that helps law enforcement process images faster and more accurately.
+
+### Why TrafficIQ?
+
+| Challenge | Solution |
+|-----------|----------|
+| Manual analysis is slow | Automated AI predictions in ~200ms |
+| High error rates | ML models trained on thousands of images |
+| Poor metadata | Structured JSON cases with full audit trail |
+| Development complexity | Works locally (no GCP needed) + Cloud Run ready |
 
 ## Architecture
 
-![TrafficIQ System Architecture](./architecture/system_design.mmd)
+## How It Works (3-Step Pipeline)
 
-The system is built around three core layers:
+```
+Traffic Camera Image
+        ↓
+┌──────────────────────────────────────┐
+│ STEP 1: Vehicle Analysis             │
+│ • Make, model, year, color detected  │
+│ • Confidence level calculated        │
+└──────────────────────────────────────┘
+        ↓
+┌──────────────────────────────────────┐
+│ STEP 2: License Plate Extraction     │
+│ • OCR if image quality is poor       │
+│ • Skip if prediction already strong  │
+└──────────────────────────────────────┘
+        ↓
+┌──────────────────────────────────────┐
+│ STEP 3: Watchlist Check + Priority   │
+│ • Check BOLO database for matches    │
+│ • Assign priority (P0/P1/P2)         │
+│ • Create case record                 │
+└──────────────────────────────────────┘
+        ↓
+    Case Record
+(Ready for Investigator)
+```
 
-1. **API Layer** (FastAPI)
-   - RESTful endpoints for vehicle analysis and agent orchestration
-   - Cloud Run-ready containerization
-   - JSON-structured logging for production observability
+## System Layers
 
-2. **Agent Orchestration** (Router)
-   - Multi-step processing pipeline with policy-driven decisions
-   - Conditional OCR fallback based on image quality and confidence
-   - BOLO database correlation
-   - Automatic priority assignment and case creation
+**API Layer** (FastAPI)
+- REST endpoints for predictions and case creation
+- Automatic documentation at `/docs`
+- Ready to deploy on Cloud Run
 
-3. **Tools Layer**
-   - Vertex AI integration (real or mock)
-   - OCR plate extraction
-   - BOLO watchlist lookup
-   - Evidence packet generation
-   - Case management interface
+**Intelligence Layer** (Agent Router)
+- Orchestrates the 3-step pipeline
+- Makes decisions based on confidence thresholds
+- Logs every decision for audit trail
+
+**Tools Layer** (Integrations)
+- Vertex AI (Google's ML model) - real or mock
+- Plate OCR (pattern matching)
+- BOLO watchlist (demo version)
+- Case management (local storage)
 
 ## Features
 
