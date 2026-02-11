@@ -69,211 +69,137 @@ Traffic Camera Image
 - BOLO watchlist (demo version)
 - Case management (local storage)
 
-## Features
+## Key Features ✨
 
-- ✅ **Multi-Modal Analysis**: Vehicle make, model, year, color, body type detection
-- ✅ **Adaptive OCR**: Automatic plate extraction when image quality is poor
-- ✅ **BOLO Integration**: Watchlist correlation for suspected vehicles
-- ✅ **Evidence Packets**: Structured JSON documentation of analyses
-- ✅ **Priority System**: P0/P1/P2 case prioritization based on confidence
-- ✅ **Mock Mode**: Deterministic predictions for offline development
-- ✅ **Vertex AI Ready**: Drop-in replacement for real model endpoints
-- ✅ **Evaluation Framework**: Built-in metrics, confusion matrices, calibration analysis
-- ✅ **Type-Safe**: Full Pydantic models and FastAPI schema validation
-- ✅ **Structured Logging**: JSON-formatted logs for cloud platforms
-- ✅ **Cloud Run Ready**: Dockerfile, deployment docs, Terraform stubs included
+| Feature | What It Does |
+|---------|-------------|
+| 🤖 **Smart Vehicle Detection** | Identifies make, model, year, color, body type |
+| 📷 **Adaptive OCR** | Auto-extracts license plates when needed |
+| 🚨 **Watchlist Integration** | Cross-references BOLO database for alerts |
+| 📊 **Automatic Prioritization** | Ranks cases as P0 (critical), P1 (medium), P2 (routine) |
+| 💾 **Structured Evidence** | Saves complete JSON audit trail for each case |
+| 🧪 **Mock Mode** | Works offline without GCP account |
+| ☁️ **Cloud Ready** | Deploy to Google Cloud Run with one command |
+| 📈 **Built-in Evaluation** | Metrics, confusion matrices, calibration analysis |
+| 🔒 **Type-Safe** | Pydantic models prevent data errors |
+| 📝 **Structured Logs** | JSON logging for production visibility
 
-## Quick Start
+## ⚡ Quick Start (5 Minutes)
 
-### Prerequisites
-
-- Python 3.11+
-- Git
-- Docker (for containerization)
-
-### Local Development
-
-#### 1. Clone & Setup
+### Step 1: Clone & Setup
 
 ```bash
-git clone https://github.com/your-org/trafficiq.git
-cd trafficiq
+# Clone the repository
+git clone https://github.com/dhanushkautilya/TrafficIQ-Multi-Modal-GenAI-Agent-System.git
+cd TrafficIQ-Multi-Modal-GenAI-Agent-System/trafficIQ
 
-# Create virtual environment
+# Create Python environment
 python3.11 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Or use uv for faster setup
-uv venv
-source .venv/bin/activate
+source venv/bin/activate          # Windows: venv\Scripts\activate
 ```
 
-#### 2. Install Dependencies
+### Step 2: Install Dependencies
 
 ```bash
-# Development installation
+# Development mode (includes testing tools)
 pip install -e ".[dev]"
 
-# Or for GCP support
-pip install -e ".[gcp]"
+# Takes ~1 minute on first install
 ```
 
-#### 3. Configure Environment
+### Step 3: Start the API
 
 ```bash
-# Copy example env file
-cp .env.example .env
+# Run the server
+uvicorn app.api.main:app --reload
 
-# Edit .env for your setup (defaults work for local development)
-# USE_VERTEX=false  # Use mock predictions
-# ENVIRONMENT=development
+# Output will show:
+# "Uvicorn running on http://127.0.0.1:8000"
 ```
 
-#### 4. Run API Server
+### Step 4: Test It! 🎉
+
+Open a **new terminal** and try:
 
 ```bash
-uvicorn app.api.main:app --reload --host 0.0.0.0 --port 8000
+# ✓ Health check
+curl http://localhost:8000/health
+
+# ✓ Analyze a vehicle
+curl -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"image_uri": "gs://bucket/car_image.jpg"}'
+
+# ✓ Full pipeline (predict + check watchlist + create case)
+curl -X POST http://localhost:8000/agent/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_uri": "gs://bucket/car_image.jpg",
+    "location": "Downtown Intersection"
+  }'
 ```
 
-API available at: `http://localhost:8000`
-Docs available at: `http://localhost:8000/docs`
+**That's it!** 🚀 The API is now working with mock predictions (no GCP account needed).
+
+---
+
+## 📖 Common Tasks
+
+## 📖 Common Tasks
 
 ### Run Tests
 
 ```bash
-# All tests
+# Run all tests
 pytest
 
-# With coverage
+# Run with coverage
 pytest --cov=app --cov=eval
 
-# Specific test
-pytest tests/test_api.py::TestHealthEndpoint::test_health_check_success -v
+# Run specific test
+pytest tests/test_api.py -v
 ```
 
 ### Run Evaluation
 
 ```bash
-# Run evaluation on sample dataset
+# Evaluate model on sample dataset
 python -m eval.evaluate
 
-# Check results
+# View results
 cat artifacts/eval_report.md
 ```
 
-## API Endpoints
+### View API Documentation
 
-### Health Check
+Open in browser: **http://localhost:8000/docs**
 
-```bash
-curl http://localhost:8000/health
-```
+(Auto-generated Swagger UI with live testing)
 
-Response:
-```json
-{
-  "status": "ok",
-  "version": "0.1.0",
-  "environment": "development"
-}
-```
-
-### Analyze Vehicle
-
-Predict vehicle details from a single image (lightweight, no OCR/BOLO):
+### Check Logs
 
 ```bash
-curl -X POST http://localhost:8000/analyze \
-  -H "Content-Type: application/json" \
-  -d '{
-    "image_uri": "gs://bucket/traffic_cam_001.jpg"
-  }'
+# Enable debug logging
+LOG_LEVEL=debug uvicorn app.api.main:app --reload
+
+# JSON format for production
+JSON_LOGGING=true uvicorn app.api.main:app
 ```
 
-Response:
-```json
-{
-  "image_uri": "gs://bucket/traffic_cam_001.jpg",
-  "make": "Honda",
-  "model": "Civic",
-  "year_range": "2020-2021",
-  "color": "black",
-  "body_type": "sedan",
-  "confidence": 0.85,
-  "image_condition": "clear",
-  "metadata": {
-    "model_version": "gemma-3n-v1.0",
-    "prediction_type": "mock"
-  },
-  "timestamp": "2024-01-15T14:30:00Z"
-}
-```
-
-### Run Full Agent Pipeline
-
-Execute the complete orchestration: predict → conditional OCR → BOLO check → case creation:
+### Configure for Production
 
 ```bash
-curl -X POST http://localhost:8000/agent/run \
-  -H "Content-Type: application/json" \
-  -d '{
-    "image_uri": "gs://bucket/traffic_cam_001.jpg",
-    "location": "Downtown Intersection A",
-    "timestamp": "2024-01-15T14:30:00Z"
-  }'
-```
+# Create .env file
+cp .env.example .env
 
-Response:
-```json
-{
-  "image_uri": "gs://bucket/traffic_cam_001.jpg",
-  "vehicle_prediction": {
-    "make": "Honda",
-    "model": "Civic",
-    "year_range": "2020-2021",
-    "color": "black",
-    "body_type": "sedan",
-    "confidence": 0.85,
-    "image_condition": "clear"
-  },
-  "ocr_fallback_used": false,
-  "plate_result": null,
-  "bolo_match": {
-    "is_match": true,
-    "make": "Honda",
-    "model": "Civic",
-    "year_range": "2020-2021",
-    "plate": null,
-    "reason": "Make 'Honda' on watchlist",
-    "match_confidence": 0.85,
-    "bolo_record_id": "BOLO-MAKE-a1b2c3d4"
-  },
-  "priority": "P0",
-  "case_record": {
-    "case_id": "CASE-x1y2z3w4",
-    "priority": "P0",
-    "summary": "Vehicle ID: Honda Civic (2020-2021) - black sedan. Confidence: 85%. BOLO Match: True. Priority: P0.",
-    "vehicle_make": "Honda",
-    "vehicle_model": "Civic",
-    "vehicle_year_range": "2020-2021",
-    "status": "open",
-    "created_at": "2024-01-15T14:30:00Z"
-  },
-  "processing_steps": [
-    "vehicle_prediction_request",
-    "vehicle_prediction_received",
-    "ocr_skipped",
-    "bolo_lookup_started",
-    "bolo_lookup_completed",
-    "priority_assignment",
-    "evidence_packet_building",
-    "evidence_packet_created",
-    "case_creation",
-    "case_created"
-  ],
-  "total_processing_time_ms": 145.32,
-  "location": "Downtown Intersection A"
-}
+# Edit key settings:
+ENVIRONMENT=production
+LOG_LEVEL=info
+USE_VERTEX=false  # Change to true for real Vertex AI
+
+# For Google Cloud
+GCP_PROJECT=my-project
+VERTEX_ENDPOINT_ID=projects/xxx/locations/xxx/endpoints/xxx
 ```
 
 ## Configuration
