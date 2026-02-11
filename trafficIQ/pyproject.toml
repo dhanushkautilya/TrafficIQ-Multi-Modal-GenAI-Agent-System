@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trafficiq"
+version = "0.1.0"
+description = "Multi-modal vehicle identification pipeline using Vertex AI"
+requires-python = ">=3.11"
+authors = [{name = "TrafficIQ Team", email = "dev@trafficiq.local"}]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "structlog>=23.2.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "pillow>=10.0.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+gcp = [
+    "google-cloud-aiplatform>=1.40.0",
+    "google-cloud-storage>=2.13.0",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
+    "black>=23.10.0",
+    "mypy>=1.6.0",
+    "httpx>=0.25.0",
+]
+
+[tool.setuptools]
+packages = ["app", "eval", "tests"]
+
+[tool.setuptools.package-data]
+app = ["**/*.py"]
+eval = ["**/*.py"]
+tests = ["**/*.py"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = '\.pyi?$'
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true

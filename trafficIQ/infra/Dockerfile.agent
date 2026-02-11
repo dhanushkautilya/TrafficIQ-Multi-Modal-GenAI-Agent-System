@@ -1,0 +1,20 @@
+# Agent-specific Dockerfile for batch processing
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml pyproject.toml
+
+RUN pip install --no-cache-dir -e .
+
+COPY trafficIQ /app/trafficIQ
+COPY .env.example .env
+
+RUN mkdir -p /app/artifacts
+
+# Run evaluation
+CMD ["python", "-m", "eval.evaluate"]

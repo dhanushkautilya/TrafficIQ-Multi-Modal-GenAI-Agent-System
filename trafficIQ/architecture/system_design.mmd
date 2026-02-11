@@ -1,0 +1,77 @@
+graph TD
+    Client["🔷 Client / External Service"]
+    
+    CloudRun["☁️  Cloud Run: TrafficIQ API<br/>FastAPI Server"]
+    
+    APIEndpoints["📍 Endpoints<br/>GET /health<br/>POST /analyze<br/>POST /agent/run"]
+    
+    VertexAI["🧠 Vertex AI<br/>Gemma 3n Model<br/>Vehicle Detection"]
+    VertexMock["📋 Mock Predictor<br/>Deterministic Hash-based<br/>Predictions"]
+    
+    OCRClient["📸 OCR Service<br/>Plate Extraction"]
+    OCRMock["📋 Mock OCR<br/>Pattern-based Plates"]
+    
+    BOLODb["🔍 BOLO Database<br/>Watchlist Lookup"]
+    BOLOMock["📋 Mock BOLO<br/>Hardcoded Matches"]
+    
+    Evidence["💾 Evidence Packet Builder<br/>JSON Serialization"]
+    GCS["☁️  Google Cloud Storage<br/>gs://trafficiq-bucket"]
+    LocalStorage["💿 Local Storage<br/>./artifacts/"]
+    
+    CaseClient["📝 Case Management<br/>Record Creation"]
+    CasesDB["📊 Cases Database<br/>./artifacts/cases.jsonl"]
+    
+    Router["🤖 Agent Router<br/>Orchestration Logic<br/>Policy Engine"]
+    
+    PolicyEngine["⚙️  Policy Config<br/>Thresholds & Rules"]
+    
+    Client -->|HTTP Request| CloudRun
+    CloudRun --> APIEndpoints
+    
+    APIEndpoints -->|/analyze| VertexAI
+    VertexAI -.->|Mock Mode| VertexMock
+    VertexMock -->|VehiclePrediction| CloudRun
+    
+    APIEndpoints -->|/agent/run| Router
+    Router -->|predict_vehicle| VertexAI
+    Router -->|check confidence| PolicyEngine
+    
+    PolicyEngine -->|confidence < 0.70| Router
+    Router -->|extract_plate| OCRClient
+    OCRClient -.->|Mock Mode| OCRMock
+    OCRMock -->|PlateResult| Router
+    
+    Router -->|lookup| BOLODb
+    BOLODb -.->|Mock Mode| BOLOMock
+    BOLOMock -->|BOLOMatch| Router
+    
+    Router -->|assign priority| PolicyEngine
+    PolicyEngine -->|P0/P1/P2| Router
+    
+    Router -->|build packet| Evidence
+    Evidence -->|save| LocalStorage
+    Evidence -->|save| GCS
+    Evidence -->|EvidencePacket| Router
+    
+    Router -->|create| CaseClient
+    CaseClient -->|save| CasesDB
+    CaseClient -->|CaseRecord| Router
+    
+    Router -->|AgentResult| CloudRun
+    CloudRun -->|JSON Response| Client
+    
+    style Client fill:#e1f5ff
+    style CloudRun fill:#fff3e0
+    style Router fill:#f3e5f5
+    style PolicyEngine fill:#fce4ec
+    style VertexAI fill:#e8f5e9
+    style VertexMock fill:#c8e6c9
+    style OCRClient fill:#e8f5e9
+    style OCRMock fill:#c8e6c9
+    style BOLODb fill:#e8f5e9
+    style BOLOMock fill:#c8e6c9
+    style Evidence fill:#f1f8e9
+    style GCS fill:#fff9c4
+    style LocalStorage fill:#fff9c4
+    style CaseClient fill:#fce4ec
+    style CasesDB fill:#f1f8e9
